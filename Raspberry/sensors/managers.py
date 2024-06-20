@@ -63,6 +63,12 @@ class Manager:
                 self.logger.debug(f"Activated {command_to_match} event")
 
 
+    def __str__(self):
+        attributes = ", ".join(f"{key}={value}" for key, value in vars(self).items())
+        return f"Manager({attributes})"
+
+
+
 
 class BME280(Manager):
     def __init__(self, location, logger_level = 'INFO'):
@@ -73,9 +79,6 @@ class BME280(Manager):
             command_to_match = "measure_temperature",
             logger_level     = logger_level
         )
-
-    def __str__(self):
-        return f"BME280(logger_name={self.logger_name}, file_name={self.file_name}, logger_level={self.logger_level}, location={self.location})"
 
     async def _get_sensor_data(self, queue):
         while True:
@@ -104,9 +107,6 @@ class Camera(Manager):
             command_to_match = "take_picture",
             logger_level     = logger_level
         )
-
-    def __str__(self):
-        return f"Camera(logger_name={self.logger_name}, file_name={self.file_name}, logger_level={self.logger_level}, location={self.location})"
 
     async def get_sensor_data(self, queue):
         while True:

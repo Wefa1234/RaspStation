@@ -103,4 +103,5 @@ class WebSocketClient:
             self.logger.error("Disconnected from the server")   
     
     def __str__(self):
-        return f"WebSocketClient(uri={self.uri})"
+        attributes = ", ".join(f"{key}={value}" for key, value in vars(self).items())
+        return f"WebSocketClient({attributes})"
