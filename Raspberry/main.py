@@ -17,13 +17,23 @@ async def main():
     sensor_queue  = asyncio.Queue()
     command_queue = asyncio.Queue()
 
-    client = WebSocketClient(WS_URI, LOGGER_LEVEL)
+    client = WebSocketClient(
+        uri           = WS_URI,
+        #path_to_certs = "./certs",
+        logger_level  = LOGGER_LEVEL
+    )
     logger.info(f"WebSocketClient initialized: {client}")
 
-    bme280 = BME280(CLIENT_LOCATION, LOGGER_LEVEL)
+    bme280 = BME280(
+        location     = CLIENT_LOCATION,
+        logger_level = LOGGER_LEVEL
+    )
     logger.info(f"BME280 initialized: {bme280}")
 
-    camera = Camera(CLIENT_LOCATION, LOGGER_LEVEL)
+    camera = Camera(
+        location     = CLIENT_LOCATION,
+        logger_level = LOGGER_LEVEL
+    )
     logger.info(f"Camera initialized: {camera}")
 
     tasks = [

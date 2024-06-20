@@ -1,19 +1,28 @@
 import asyncio
 import websockets
 import json
+import ssl
 
 from logger.logger import RaspberryPiLogger
 
 class WebSocketClient:
-    def __init__(self, uri, logger_level = 'INFO'):
+    def __init__(self, uri, path_to_certs = None, logger_level = 'INFO'):
         self.logger    = RaspberryPiLogger(logger_name = "WEBSOCKET", file_name = "websocket.log", level = logger_level)
         self.uri       = uri
         self.websocket = None
+        self.path_to_certs = path_to_certs
+        self.ssl_context = None
 
 
     async def main(self, incoming_queue, outgoing_queue):
         connection_retries = 5
         backoff_factor     = 2
+
+        if self.path_to_certs:
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ssl_context.load_verify_locations(f'{self.path_to_certs}/ca.crt')
+            ssl_context.load_cert_chain(f'{self.path_to_certs}/client.crt', f'{self.path_to_certs}/client.key')
+            self.ssl_context = ssl_context            
         
         for connection_attempt in range(connection_retries):
             try:
@@ -43,7 +52,7 @@ class WebSocketClient:
         for connection_attempt in range(connection_retries):
             try:
                 self.logger.info("Connecting to the server")
-                self.websocket = await websockets.connect(self.uri)
+                self.websocket = await websockets.connect(self.uri, ssl=self.ssl_context)
                 self.logger.info("WebSocket connection successful")
                 break
             except Exception as e:
