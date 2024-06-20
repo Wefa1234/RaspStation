@@ -1,23 +1,85 @@
 import random
 import asyncio
 import json
+from abc import ABC, abstractmethod
 
 from logger.logger import RaspberryPiLogger
 
+class Manager:
+    def __init__(
+            self, 
+            location, 
+            logger_name, 
+            file_name, 
+            command_to_match,
+            logger_level = 'INFO'):
+        
+        self.logger   = RaspberryPiLogger(
+            logger_name = logger_name,
+            file_name   = file_name,
+            level       = logger_level
+        )
+        self.location         = location
+        self.logger_name      = logger_name
+        self.file_name        = file_name
+        self.logger_level     = logger_level
+        self.command_to_match = command_to_match
+        self.command_trigger  = asyncio.Event()
 
-class BME280Manager:
+
+    async def main(self, incoming_queue, outgoing_queue):
+        connection_retries = 5
+        backoff_factor     = 2
+
+        for connection_attempt in range(connection_retries):
+            try:
+                tasks = [
+                    self._get_sensor_data(outgoing_queue),
+                    self._evaluate_command(incoming_queue, self.command_to_match),
+                ]
+                await asyncio.gather(*tasks)
+                break 
+            except Exception as e:
+                self.logger.error(f"Error in main function: {e}")
+                if connection_attempt < connection_retries - 1:
+                    wait_time = backoff_factor * (2 ** connection_attempt)
+                    self.logger.info(f"Retrying main function in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    self.logger.error("Main function failed after multiple attempts.")
+                    asyncio.get_running_loop().stop()
+
+
+    @abstractmethod 
+    async def _get_sensor_data(self, queue):
+        pass
+
+
+    async def _evaluate_command(self, queue, command_to_match):
+        while True:
+            command = await queue.get()
+            if command["command"] == command_to_match:
+                self.command_trigger.set()
+                self.logger.debug(f"Activated {command_to_match} event")
+
+
+
+class BME280(Manager):
     def __init__(self, location, logger_level = 'INFO'):
-        self.logger      = RaspberryPiLogger(logger_name = "BME280", file_name = "bme280.log", level = logger_level)
-        self.temperature = 25
-        self.location    = location
-        self.measure_temperature_event = asyncio.Event()
+        super().__init__(
+            location, 
+            logger_name      = "BME280",
+            file_name        = "bme280.log",
+            command_to_match = "measure_temperature",
+            logger_level     = logger_level
+        )
 
     def __str__(self):
-        return f"BME280Manager(temperature={self.temperature}, location={self.location})"
+        return f"BME280(logger_name={self.logger_name}, file_name={self.file_name}, logger_level={self.logger_level}, location={self.location})"
 
-    async def get_sensor_data(self):
+    async def _get_sensor_data(self, queue):
         while True:
-            await self.measure_temperature_event.wait()
+            await self.command_trigger.wait()
             data = {
                 "type"    : "sensor_data",
                 "sensor"  : "BME280",
@@ -28,28 +90,27 @@ class BME280Manager:
                 }
             }
             self.logger.debug(f"Measured temperature: {data}")
-            self.measure_temperature_event.clear()
-            yield json.dumps(data)
+            self.command_trigger.clear()
+            await queue.put(json.dumps(data))
     
 
-    async def evaluate_command(self, command):
-        if command["command"] == "measure_temperature":
-            self.measure_temperature_event.set()
-            self.logger.debug(f"Activated measure temperature event")
 
-
-class CameraManager:
+class Camera(Manager):
     def __init__(self, location, logger_level = 'INFO'):
-        self.logger   = RaspberryPiLogger(logger_name = "CAMERA", file_name = "camera.log", level = logger_level)
-        self.location = location
-        self.take_picture_event = asyncio.Event()
-    
-    def __str__(self):
-        return f"CameraManager(location={self.location})"
+        super().__init__(
+            location, 
+            logger_name      = "CAMERA",
+            file_name        = "camera.log",
+            command_to_match = "take_picture",
+            logger_level     = logger_level
+        )
 
-    async def get_sensor_data(self):
+    def __str__(self):
+        return f"Camera(logger_name={self.logger_name}, file_name={self.file_name}, logger_level={self.logger_level}, location={self.location})"
+
+    async def get_sensor_data(self, queue):
         while True:
-            await self.take_picture_event.wait()
+            await self.command_trigger.wait()
             data = {
                 "type"    : "picture",
                 "sensor"  : "camera",
@@ -59,10 +120,5 @@ class CameraManager:
                 }
             }
             self.logger.debug(f"Taken picture: {data}")
-            self.take_picture_event.clear()
-            yield json.dumps(data)
-
-    async def evaluate_command(self, command):
-        if command["command"] == "take_picture":
-            self.take_picture_event.set()
-            self.logger.debug(f"Activated take picture event")
+            self.command_trigger.clear()
+            await queue.put(json.dumps(data))

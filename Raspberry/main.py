@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from websocket.client import WebSocketClient
-from sensors.managers import BME280Manager, CameraManager
+from sensors.managers import BME280, Camera
 from logger.logger import RaspberryPiLogger
 from data.structures import BME280Data, CameraData
 
@@ -10,17 +10,6 @@ from data.structures import BME280Data, CameraData
 WS_URI          = "ws://localhost:8765"
 CLIENT_LOCATION = 'Olohuone'
 LOGGER_LEVEL    = 'INFO'
-
-async def populate_sensor_queue(queue, manager):
-    async for data in manager.get_sensor_data():
-        await queue.put(data)
-
-async def command_dispatcher(command_queue, bme280_manager, camera_manager):
-    while True:
-        command = await command_queue.get()
-        await bme280_manager.evaluate_command(command)
-        await camera_manager.evaluate_command(command)
-        command_queue.task_done()
 
 async def main():
     logger = RaspberryPiLogger(logger_name="MAIN", file_name="main.log", level = LOGGER_LEVEL)
@@ -31,18 +20,31 @@ async def main():
     client = WebSocketClient(WS_URI, LOGGER_LEVEL)
     logger.info(f"WebSocketClient initialized: {client}")
 
-    bme280 = BME280Manager(CLIENT_LOCATION, LOGGER_LEVEL)
-    logger.info(f"BME280Manager initialized: {bme280}")
+    bme280 = BME280(CLIENT_LOCATION, LOGGER_LEVEL)
+    logger.info(f"BME280 initialized: {bme280}")
 
-    camera = CameraManager(CLIENT_LOCATION, LOGGER_LEVEL)
-    logger.info(f"CameraManager initialized: {camera}")
+    camera = Camera(CLIENT_LOCATION, LOGGER_LEVEL)
+    logger.info(f"Camera initialized: {camera}")
 
     tasks = [
-        asyncio.create_task(client.connect(command_queue)),
-        asyncio.create_task(populate_sensor_queue(sensor_queue, bme280)),
-        asyncio.create_task(populate_sensor_queue(sensor_queue, camera)),
-        asyncio.create_task(client.handle_outgoing_data(sensor_queue)),
-        asyncio.create_task(command_dispatcher(command_queue, bme280, camera))
+        asyncio.create_task(
+            client.main(
+                incoming_queue = command_queue, 
+                outgoing_queue = sensor_queue
+            )
+        ),
+        asyncio.create_task(
+            bme280.main(
+                incoming_queue = command_queue, 
+                outgoing_queue = sensor_queue
+            )
+        ),
+        asyncio.create_task(
+            camera.main(
+                incoming_queue = command_queue, 
+                outgoing_queue = sensor_queue
+            )
+        ),
     ]   
     await asyncio.gather(*tasks)
 
